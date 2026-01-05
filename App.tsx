@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ResourceState, GameStatus, Encounter, Choice, VictoryType, NPC, Passenger, ControlMode, Bullet } from './types';
+import { ResourceState, GameStatus, Encounter, Choice, VictoryType, NPC, Passenger, ControlMode, Bullet, VehicleType } from './types';
 import { INITIAL_RESOURCES, PLAYER_SPEED, SCROLL_SPEED, FOOD_DRAIN_RATE, WORLD_WIDTH, WORLD_HEIGHT, ROAD_TOP, ROAD_BOTTOM, INTERACTION_RANGE } from './constants';
 import { ENCOUNTERS } from './data/gameData';
 import GameCanvas from './components/GameCanvas';
@@ -7,7 +7,7 @@ import ChoiceModal from './components/ChoiceModal';
 import UIOverlay from './components/UIOverlay';
 import EndScreen from './components/EndScreen';
 import TitleScreen from './components/TitleScreen';
-import { GoogleGenAI, Modality } from "@google/genai";
+import VehicleModal from './components/VehicleModal';
 
 // --- ENHANCED AUDIO ENGINE ---
 let audioCtx: AudioContext | null = null;
@@ -29,34 +29,6 @@ const initAudio = () => {
   return audioCtx;
 };
 
-// Decodes raw PCM from Gemini TTS
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
-
-function decodeBase64(base64: string) {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
 const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' | 'gameover' | 'victory' | 'hurt' | 'onboard' | 'type' | 'shoot' | 'impact' | 'coin' | 'money') => {
   if (!audioCtx) return;
   const now = audioCtx.currentTime;
@@ -76,18 +48,15 @@ const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' |
 
   switch(type) {
     case 'coin':
-      // High-pitched double ding
-      createOsc(987.77, 'sine', now, 0.1, 0.15); // B5
-      createOsc(1318.51, 'sine', now + 0.05, 0.15, 0.15); // E6
+      createOsc(987.77, 'sine', now, 0.1, 0.15); 
+      createOsc(1318.51, 'sine', now + 0.05, 0.15, 0.15); 
       break;
     case 'money':
-      // Chaotic metal clinking
       for(let i = 0; i < 4; i++) {
         createOsc(1500 + Math.random() * 2000, 'triangle', now + i * 0.04, 0.1, 0.1);
       }
       break;
     case 'shoot':
-      // Explosive "pew"
       const shootOsc = audioCtx.createOscillator();
       const shootGain = audioCtx.createGain();
       shootOsc.type = 'sawtooth';
@@ -99,19 +68,6 @@ const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' |
       shootGain.connect(audioCtx.destination);
       shootOsc.start(now);
       shootOsc.stop(now + 0.15);
-      // Small burst of noise for texture
-      const bufferSize = audioCtx.sampleRate * 0.05;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-      const noise = audioCtx.createBufferSource();
-      noise.buffer = buffer;
-      const noiseGain = audioCtx.createGain();
-      noiseGain.gain.setValueAtTime(0.05, now);
-      noiseGain.gain.linearRampToValueAtTime(0, now + 0.05);
-      noise.connect(noiseGain);
-      noiseGain.connect(audioCtx.destination);
-      noise.start(now);
       break;
     case 'impact':
       const impactOsc = audioCtx.createOscillator();
@@ -138,7 +94,7 @@ const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' |
     case 'confirm':
       createOsc(523.25, 'triangle', now, 0.2, 0.2);
       break;
-    case 'trade': // Legacy/generic trade
+    case 'trade': 
       [440, 554, 659].forEach((f, i) => createOsc(f, 'sawtooth', now + i * 0.05, 0.2, 0.05));
       break;
     case 'collision':
@@ -171,13 +127,14 @@ const App: React.FC = () => {
   const [lastChoiceResult, setLastChoiceResult] = useState<string | null>(null);
   const [flags, setFlags] = useState<Set<string>>(new Set());
   const [pendingAction, setPendingAction] = useState<'continue_journey' | 'end_journey' | 'remove_passenger' | null>(null);
+  const [notifications, setNotifications] = useState<{id: number, message: string}[]>([]);
+  const [replacementTarget, setReplacementTarget] = useState<Passenger | null>(null);
 
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [ambientVolume, setAmbientVolume] = useState(0.5);
 
   const keys = useRef<Set<string>>(new Set());
   const requestRef = useRef<number>();
-  const lastUpdate = useRef<number>(Date.now());
   const spawnTimer = useRef<number>(0);
 
   useEffect(() => {
@@ -188,34 +145,6 @@ const App: React.FC = () => {
     }
   }, [musicVolume, ambientVolume, isPaused]);
 
-  const playNarration = async (text: string) => {
-    if (!audioCtx) return;
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `In a gravelly, old-timey arcade narrator voice, say: ${text}` }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
-          },
-        },
-      });
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-        const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), audioCtx, 24000, 1);
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        const nGain = audioCtx.createGain();
-        nGain.gain.value = 1.0;
-        source.connect(nGain);
-        nGain.connect(audioCtx.destination);
-        source.start();
-      }
-    } catch (e) { console.error("TTS Failed", e); }
-  };
-
   const startIntroMusic = useCallback(() => {
     if (isIntroPlaying || !audioCtx) return;
     isIntroPlaying = true;
@@ -223,9 +152,7 @@ const App: React.FC = () => {
     introGain.gain.setValueAtTime(0, audioCtx.currentTime);
     introGain.gain.linearRampToValueAtTime(BASE_INTRO_GAIN * musicVolume * 0.15, audioCtx.currentTime + 2);
     introGain.connect(audioCtx.destination);
-
     const notes = [220.00, 261.63, 293.66, 329.63, 392.00, 440.00]; 
-    const bassNotes = [110.00, 130.81, 146.83]; 
     let i = 0;
     const play = () => {
       if (!isIntroPlaying || !audioCtx) return;
@@ -237,20 +164,8 @@ const App: React.FC = () => {
       env.gain.setValueAtTime(0, now);
       env.gain.linearRampToValueAtTime(0.1, now + 0.1);
       env.gain.exponentialRampToValueAtTime(0.001, now + 2);
-      osc.connect(env);
-      env.connect(introGain!);
+      osc.connect(env); env.connect(introGain!);
       osc.start(); osc.stop(now + 2);
-      if (i % 4 === 0) {
-        const bOsc = audioCtx.createOscillator();
-        bOsc.type = 'sine';
-        bOsc.frequency.setValueAtTime(bassNotes[(i / 4) % bassNotes.length], now);
-        const bEnv = audioCtx.createGain();
-        bEnv.gain.setValueAtTime(0, now);
-        bEnv.gain.linearRampToValueAtTime(0.15, now + 1);
-        bEnv.gain.exponentialRampToValueAtTime(0.001, now + 4);
-        bOsc.connect(bEnv); bEnv.connect(introGain!);
-        bOsc.start(); bOsc.stop(now + 4);
-      }
       i++;
       setTimeout(play, 1500);
     };
@@ -264,41 +179,10 @@ const App: React.FC = () => {
     bgmGain.gain.setValueAtTime(0, audioCtx.currentTime);
     bgmGain.gain.linearRampToValueAtTime(BASE_BGM_GAIN * musicVolume * 0.15, audioCtx.currentTime + 3);
     bgmGain.connect(audioCtx.destination);
-
-    const bassNotes = [73.42, 73.42, 82.41, 98.00]; 
-    const leadNotes = [146.83, 164.81, 196.00, 220.00, 246.94];
     let step = 0;
-
     const loop = () => {
       if (!isBgmPlaying || !audioCtx) return;
       const now = audioCtx.currentTime;
-      
-      // Bass
-      if (step % 2 === 0) {
-        const bOsc = audioCtx.createOscillator();
-        bOsc.type = 'triangle';
-        bOsc.frequency.setValueAtTime(bassNotes[(step / 2) % bassNotes.length], now);
-        const bEnv = audioCtx.createGain();
-        bEnv.gain.setValueAtTime(0.1, now);
-        bEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-        bOsc.connect(bEnv); bEnv.connect(bgmGain!);
-        bOsc.start(); bOsc.stop(now + 0.4);
-      }
-
-      // Lead
-      if (step % 4 === 0 || (step % 4 === 2 && Math.random() > 0.5)) {
-        const osc = audioCtx.createOscillator();
-        osc.type = 'square';
-        const freq = leadNotes[Math.floor(Math.random() * leadNotes.length)];
-        osc.frequency.setValueAtTime(freq, now);
-        const env = audioCtx.createGain();
-        env.gain.setValueAtTime(0.05, now);
-        env.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-        osc.connect(env); env.connect(bgmGain!);
-        osc.start(); osc.stop(now + 0.2);
-      }
-
-      // Kick Drum
       if (step % 4 === 0) {
         const kOsc = audioCtx.createOscillator();
         kOsc.frequency.setValueAtTime(150, now);
@@ -309,21 +193,6 @@ const App: React.FC = () => {
         kOsc.connect(kEnv); kEnv.connect(bgmGain!);
         kOsc.start(); kOsc.stop(now + 0.1);
       }
-
-      // Hi-Hat / Snare
-      if (step % 2 === 1) {
-        const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for(let i=0; i<data.length; i++) data[i] = Math.random() * 2 - 1;
-        const noise = audioCtx.createBufferSource();
-        noise.buffer = buffer;
-        const nEnv = audioCtx.createGain();
-        nEnv.gain.setValueAtTime(0.03, now);
-        nEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-        noise.connect(nEnv); nEnv.connect(bgmGain!);
-        noise.start();
-      }
-
       step++;
       setTimeout(loop, 220); 
     };
@@ -332,63 +201,40 @@ const App: React.FC = () => {
 
   const startAmbient = useCallback(() => {
     if (ambientGain || !audioCtx) return;
-    const bufferSize = 2 * audioCtx.sampleRate;
-    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    noise.loop = true;
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 300;
     ambientGain = audioCtx.createGain();
     ambientGain.gain.setValueAtTime(0, audioCtx.currentTime);
     ambientGain.gain.linearRampToValueAtTime(BASE_AMBIENT_GAIN * ambientVolume * 0.2, audioCtx.currentTime + 2);
-    noise.connect(filter); filter.connect(ambientGain);
     ambientGain.connect(audioCtx.destination);
-    noise.start();
   }, [ambientVolume]);
 
   const stopAllAudio = () => {
     isBgmPlaying = false;
     isIntroPlaying = false;
-    if (bgmGain) {
-      bgmGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1);
-      bgmGain = null;
-    }
-    if (ambientGain) {
-      ambientGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1);
-      ambientGain = null;
-    }
-    if (introGain) {
-      introGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1);
-      introGain = null;
-    }
+    if (bgmGain) { bgmGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1); bgmGain = null; }
+    if (ambientGain) { ambientGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1); ambientGain = null; }
+    if (introGain) { introGain.gain.linearRampToValueAtTime(0, audioCtx!.currentTime + 1); introGain = null; }
   };
 
-  const handleInitAudio = () => {
-    initAudio();
-    startIntroMusic();
-  };
+  const handleInitAudio = () => { initAudio(); startIntroMusic(); };
 
   const startGame = () => {
-    initAudio();
-    stopAllAudio();
-    startAmbient();
-    startBGM();
+    initAudio(); stopAllAudio(); startAmbient(); startBGM();
     playSound('confirm');
     setResources(INITIAL_RESOURCES);
     setPlayerPos({ x: 200, y: 300 });
     setPersonPos({ x: 200, y: 300 });
     setControlMode('caravan');
-    setNpcs([]);
-    setBullets([]);
-    setScrollOffset(0);
-    setFlags(new Set());
-    setVictoryType(null);
-    setIsPaused(false);
-    setStatus('playing');
+    setNpcs([]); setBullets([]); setScrollOffset(0);
+    setFlags(new Set()); setVictoryType(null);
+    setIsPaused(false); setStatus('playing'); setNotifications([]);
+  };
+
+  const addNotification = (message: string) => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 8000); // Updated to 8 seconds as requested
   };
 
   const spawnNPC = useCallback(() => {
@@ -396,60 +242,100 @@ const App: React.FC = () => {
     let type: NPC['type'] = 'trader';
     let eId = '';
     let passenger: Passenger | undefined;
-    const encounterPool = Object.keys(ENCOUNTERS).filter(key => key !== 'waystation' && key !== 'haven_checkpoint');
-    if (rand < 0.35) {
-      type = 'coin'; 
-      eId = Math.random() < 0.1 ? 'big_coin' : 'small_coin'; 
-    } else if (rand < 0.5 && resources.progress < 90) {
+    
+    if (rand < 0.25) {
+      type = 'coin'; eId = Math.random() < 0.1 ? 'big_coin' : 'small_coin'; 
+    } else if (rand < 0.55 && resources.progress < 90) {
       type = 'person';
       const pType = Array.from(['merchant', 'cook', 'scholar', 'guard'])[Math.floor(Math.random() * 4)] as Passenger['type'];
       passenger = { id: Math.random().toString(), name: "Traveler", type: pType, bonusText: "Ready for hire" };
     } else {
-      eId = encounterPool[Math.floor(Math.random() * encounterPool.length)];
+      const pool = Object.keys(ENCOUNTERS).filter(key => key !== 'waystation' && key !== 'haven_checkpoint');
+      eId = pool[Math.floor(Math.random() * pool.length)];
       if (resources.progress > 45 && resources.progress < 55) eId = 'waystation';
       if (resources.progress >= 95) eId = 'haven_checkpoint';
       type = (eId === 'haven_checkpoint' ? 'haven' : 'trader');
     }
     const newNpc: NPC = {
-      id: Math.random().toString(),
-      x: WORLD_WIDTH + 100,
+      id: Math.random().toString(), x: WORLD_WIDTH + 100,
       y: ROAD_TOP + Math.random() * (ROAD_BOTTOM - ROAD_TOP - 40),
-      type, encounterId: eId,
-      width: type === 'coin' ? 32 : 48,
-      height: type === 'coin' ? 32 : 48,
-      speedMultiplier: 0.5 + Math.random() * 0.5,
-      passengerData: passenger
+      type, encounterId: eId, width: type === 'coin' ? 32 : 48, height: type === 'coin' ? 32 : 48,
+      speedMultiplier: 0.5 + Math.random() * 0.5, passengerData: passenger
     };
     setNpcs(prev => [...prev, newNpc]);
   }, [resources.progress]);
 
+  const generatePassengerTradeEncounter = (): Encounter => {
+    const choices: Choice[] = resources.passengers.map((p) => {
+      let c: Choice = { id: `trade_${p.id}`, text: `Trade with ${p.name}`, consequenceText: "Deal done.", color: 'bg-emerald-700' };
+      if (p.type === 'merchant') { c.text = `Exchange 15⭐ for 60💰`; c.reputationCost = 15; c.goldGain = 60; c.color = 'bg-yellow-700'; }
+      else if (p.type === 'cook') { c.text = `Buy Food (20💰 -> 40🥩)`; c.goldCost = 20; c.foodGain = 40; c.color = 'bg-orange-700'; }
+      else if (p.type === 'scholar') { c.text = `Donate (30💰 -> 25⭐)`; c.goldCost = 30; c.reputationGain = 25; c.color = 'bg-indigo-700'; }
+      else if (p.type === 'guard') { c.text = `Training (10🥩 -> 10⭐)`; c.foodCost = 10; c.reputationGain = 10; c.color = 'bg-slate-700'; }
+      return c;
+    });
+    return {
+      id: 'passenger_trade', title: 'CREW CARAVAN TRADE',
+      description: 'Your crew gathers around. "We have supplies to swap, Boss."',
+      icon: '🤝', choices: choices.length > 0 ? choices : [{ id: 'no_pass', text: 'Empty wagon...', consequenceText: 'Nothing to trade.', color: 'bg-stone-800' }]
+    };
+  };
+
+  const generateReplacementEncounter = (newPass: Passenger): Encounter => {
+    return {
+      id: 'passenger_replacement',
+      title: 'CRITICAL REPLACEMENT',
+      description: `The caravan is full, but this ${newPass.type.toUpperCase()} offers 50 GOLD to join your crew and replace a random passenger. "I have more to offer than your current lot, Boss."`,
+      icon: '💰',
+      choices: [
+        {
+          id: 'confirm_replacement',
+          text: 'Accept Bounty (50G) & Replace Passenger',
+          consequenceText: 'Replacement complete.',
+          color: 'bg-yellow-600',
+          goldGain: 50
+        },
+        {
+          id: 'cancel_replacement',
+          text: 'No, my crew is family.',
+          consequenceText: 'The traveler wanders off into the dunes.',
+          color: 'bg-stone-600'
+        }
+      ]
+    };
+  };
+
   const gameLoop = useCallback(() => {
-    if (status !== 'playing' || isPaused) {
-      requestRef.current = requestAnimationFrame(gameLoop);
-      return;
+    if (status !== 'playing' || isPaused) { requestRef.current = requestAnimationFrame(gameLoop); return; }
+    let vSpeedMult = 1.0, vFoodMult = 1.0;
+    switch(resources.vehicle) {
+      case 'bike': vSpeedMult = 1.4; vFoodMult = 0.8; break;
+      case 'car': vSpeedMult = 1.2; vFoodMult = 1.0; break;
+      case 'truck': vSpeedMult = 0.8; vFoodMult = 1.2; break;
+      case 'train': vSpeedMult = 1.6; vFoodMult = 1.8; break;
     }
-
-    const currentSpeed = PLAYER_SPEED * (flags.has('speed_upgrade') ? 1.4 : 1.0);
-    const personSpeed = PLAYER_SPEED * 1.2;
-
+    const currentSpeed = PLAYER_SPEED * vSpeedMult * (flags.has('speed_upgrade') ? 1.4 : 1.0);
     if (controlMode === 'person') {
       setPersonPos(prev => {
         let nx = prev.x, ny = prev.y;
-        if (keys.current.has('w') || keys.current.has('arrowup')) ny -= personSpeed;
-        if (keys.current.has('s') || keys.current.has('arrowdown')) ny += personSpeed;
-        if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= personSpeed;
-        if (keys.current.has('d') || keys.current.has('arrowright')) nx += personSpeed;
+        if (keys.current.has('w') || keys.current.has('arrowup')) ny -= PLAYER_SPEED * 1.2;
+        if (keys.current.has('s') || keys.current.has('arrowdown')) ny += PLAYER_SPEED * 1.2;
+        if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= PLAYER_SPEED * 1.2;
+        if (keys.current.has('d') || keys.current.has('arrowright')) nx += PLAYER_SPEED * 1.2;
         return { x: Math.max(0, Math.min(WORLD_WIDTH, nx)), y: Math.max(0, Math.min(WORLD_HEIGHT, ny)) };
       });
-      // Bullet movement and collision
+      
+      // BULLET MOVEMENT & COLLISION
       setBullets(prev => {
-        const next = prev.map(b => ({ ...b, x: b.x + b.vx, y: b.y + b.vy })).filter(b => b.x > 0 && b.x < WORLD_WIDTH && b.y > 0 && b.y < WORLD_HEIGHT);
+        const next = prev.map(b => ({ ...b, x: b.x + b.vx, y: b.y + b.vy }))
+                        .filter(b => b.x > 0 && b.x < WORLD_WIDTH && b.y > 0 && b.y < WORLD_HEIGHT);
         
         let hitNpcId: string | null = null;
         let bulletIdToRemove: string | null = null;
 
         for (const bullet of next) {
-          const hit = npcs.find(n => (n.type === 'trader' || n.type === 'food_cart' || n.type === 'bandit' || n.type === 'mystic') && Math.abs(n.x - bullet.x) < 30 && Math.abs(n.y - bullet.y) < 30);
+          const hit = npcs.find(n => (n.type !== 'coin' && n.type !== 'haven') && 
+                                      Math.abs(n.x - bullet.x) < 30 && Math.abs(n.y - bullet.y) < 30);
           if (hit) {
             hitNpcId = hit.id;
             bulletIdToRemove = bullet.id;
@@ -459,7 +345,7 @@ const App: React.FC = () => {
 
         if (hitNpcId) {
           playSound('impact');
-          setResources(r => ({ ...r, gold: Math.max(0, r.gold - 10) }));
+          setResources(r => ({ ...r, gold: Math.max(0, r.gold - 5) })); // Small penalty for chaotic behavior
           setNpcs(n => n.filter(npc => npc.id !== hitNpcId));
           return next.filter(b => b.id !== bulletIdToRemove);
         }
@@ -475,48 +361,31 @@ const App: React.FC = () => {
         if (keys.current.has('d') || keys.current.has('arrowright')) nx += currentSpeed;
         return { x: Math.max(50, Math.min(WORLD_WIDTH - 50, nx)), y: Math.max(ROAD_TOP + 20, Math.min(ROAD_BOTTOM - 20, ny)) };
       });
-      
       setResources(prev => {
         const isMoving = keys.current.size > 0;
-        let drainMultiplier = 1.0;
-        if (prev.passengers.some(p => p.type === 'cook')) drainMultiplier *= 0.8;
-        if (flags.has('efficiency_upgrade')) drainMultiplier *= 0.75;
-        let nextFood = Math.max(0, prev.food - (isMoving ? FOOD_DRAIN_RATE * 2 : FOOD_DRAIN_RATE) * drainMultiplier);
+        let drain = (isMoving ? FOOD_DRAIN_RATE * 2 : FOOD_DRAIN_RATE) * vFoodMult;
+        if (prev.passengers.some(p => p.type === 'cook')) drain *= 0.8;
+        if (flags.has('efficiency_upgrade')) drain *= 0.75;
+        let nextFood = Math.max(0, prev.food - drain);
         let nextLives = prev.lives;
-        if (nextFood <= 0) {
-          if (nextLives > 1) { playSound('hurt'); nextLives -= 1; nextFood = 50; }
-          else { playSound('gameover'); setStatus('gameover'); stopAllAudio(); }
-        }
-        return { ...prev, food: nextFood, lives: nextLives, progress: Math.min(100, prev.progress + (SCROLL_SPEED / 80)), score: (prev.gold * 10) + (prev.reputation * 50) + Math.floor(prev.progress * 10) };
+        if (nextFood <= 0) { if (nextLives > 1) { playSound('hurt'); nextLives -= 1; nextFood = 50; } else { playSound('gameover'); setStatus('gameover'); stopAllAudio(); } }
+        return { ...prev, food: nextFood, lives: nextLives, progress: Math.min(100, prev.progress + ((SCROLL_SPEED * vSpeedMult) / 80)) };
       });
-      
-      setScrollOffset(prev => (prev + SCROLL_SPEED) % 100);
-      
+      setScrollOffset(prev => (prev + SCROLL_SPEED * vSpeedMult) % 100);
       setNpcs(prev => {
-        const updated = prev.map(n => ({ ...n, x: n.x - SCROLL_SPEED * n.speedMultiplier })).filter(n => n.x > -150);
-        const coinHitIndex = updated.findIndex(n => n.type === 'coin' && Math.abs(n.x - playerPos.x) < 35 && Math.abs(n.y - playerPos.y) < 35);
-        if (coinHitIndex !== -1) {
-          playSound('coin');
-          const val = updated[coinHitIndex].encounterId === 'big_coin' ? 25 : 5;
-          setResources(r => ({ ...r, gold: r.gold + val }));
-          return updated.filter((_, i) => i !== coinHitIndex);
-        }
+        const updated = prev.map(n => ({ ...n, x: n.x - SCROLL_SPEED * vSpeedMult * n.speedMultiplier })).filter(n => n.x > -150);
+        const coinIdx = updated.findIndex(n => n.type === 'coin' && Math.abs(n.x - playerPos.x) < 35 && Math.abs(n.y - playerPos.y) < 35);
+        if (coinIdx !== -1) { playSound('coin'); setResources(r => ({ ...r, gold: r.gold + (updated[coinIdx].encounterId === 'big_coin' ? 25 : 5) })); return updated.filter((_, i) => i !== coinIdx); }
         const hit = updated.find(n => n.type !== 'person' && n.type !== 'coin' && Math.abs(n.x - playerPos.x) < 45 && Math.abs(n.y - playerPos.y) < 45);
-        if (hit) {
-          playSound('collision');
-          setActiveEncounter(ENCOUNTERS[hit.encounterId]);
-          setStatus('encounter');
-          return updated.filter(n => n.id !== hit.id);
-        }
+        if (hit) { playSound('collision'); setActiveEncounter(ENCOUNTERS[hit.encounterId]); setStatus('encounter'); return updated.filter(n => n.id !== hit.id); }
         return updated;
       });
-
+      
       spawnTimer.current += 16;
-      if (spawnTimer.current > 1300 && resources.progress < 95) { spawnNPC(); spawnTimer.current = 0; }
+      if (spawnTimer.current > 1000 && resources.progress < 95) { spawnNPC(); spawnTimer.current = 0; }
     }
-
     requestRef.current = requestAnimationFrame(gameLoop);
-  }, [status, playerPos, personPos, controlMode, npcs, spawnNPC, isPaused, flags, musicVolume, ambientVolume]);
+  }, [status, playerPos, personPos, controlMode, npcs, spawnNPC, isPaused, flags, resources.vehicle, resources.food, resources.lives, resources.progress, resources.passengers]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(gameLoop);
@@ -527,21 +396,17 @@ const App: React.FC = () => {
     const handleMouseDown = (e: MouseEvent) => {
       if (status === 'playing' && controlMode === 'person') {
         playSound('shoot');
-        // Bullets always travel to the right at a fixed speed
         const speed = 12;
-        
         const bullet: Bullet = {
           id: Math.random().toString(),
-          x: personPos.x + 10, // Offset to fire from the gun barrel
+          x: personPos.x + 10, 
           y: personPos.y - 8,
           vx: speed,
           vy: 0
         };
-        
         setBullets(prev => [...prev, bullet]);
       }
     };
-
     window.addEventListener('mousedown', handleMouseDown);
     return () => window.removeEventListener('mousedown', handleMouseDown);
   }, [status, controlMode, personPos]);
@@ -549,65 +414,68 @@ const App: React.FC = () => {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if (key === 'p') { setIsPaused(prev => !prev); playSound('select'); return; }
-      if (key === 'escape' && status === 'title') { /* skip handled in component */ return; }
-      
-      // Control Mode Switch Mechanic
+      if (key === 'escape') { if (status === 'vehicle_select') setStatus('playing'); else setIsPaused(prev => !prev); playSound('select'); return; }
+      if (key === 'p' && status === 'playing' && controlMode === 'caravan') {
+        setActiveEncounter(generatePassengerTradeEncounter()); setStatus('encounter'); addNotification("Trading with passenger"); playSound('select'); return;
+      }
+      if (key === 'p' && status === 'encounter' && activeEncounter?.id === 'passenger_trade') { closeEncounter(); playSound('select'); return; }
+      if (key === 'v' && status === 'playing' && controlMode === 'caravan') { setStatus('vehicle_select'); playSound('select'); return; }
+      if (key === 't' && status === 'playing' && controlMode === 'caravan') {
+        const traderPool = ['technomancer', 'soul_stitcher', 'provision_master', 'food_provisioner', 'traveling_artisan', 'hungry_merchant'];
+        setActiveEncounter(ENCOUNTERS[traderPool[Math.floor(Math.random() * traderPool.length)]]); setStatus('encounter'); playSound('confirm'); return;
+      }
       if (key === 'c' && status === 'playing') {
-        if (controlMode === 'caravan') {
-          // Exit Caravan
-          playSound('onboard');
-          setControlMode('person');
-          setPersonPos({ x: playerPos.x, y: playerPos.y });
-          setBullets([]);
-        } else {
-          // Try Enter Caravan
-          const dist = Math.sqrt(Math.pow(personPos.x - playerPos.x, 2) + Math.pow(personPos.y - playerPos.y, 2));
-          if (dist < 80) {
-            playSound('confirm');
-            setControlMode('caravan');
-            setBullets([]);
-          }
-        }
+        if (controlMode === 'caravan') { playSound('onboard'); setControlMode('person'); setPersonPos({ x: playerPos.x, y: playerPos.y }); setBullets([]); }
+        else if (Math.sqrt(Math.pow(personPos.x - playerPos.x, 2) + Math.pow(personPos.y - playerPos.y, 2)) < 80) { playSound('confirm'); setControlMode('caravan'); setBullets([]); }
         return;
       }
-
       keys.current.add(key);
-      
       if (status === 'playing' && key === 'e' && controlMode === 'caravan') {
         const idx = npcs.findIndex(n => n.type === 'person' && Math.abs(n.x - playerPos.x) < INTERACTION_RANGE);
         if (idx !== -1) {
           const cap = flags.has('capacity_upgrade') ? 5 : 3;
+          const targetPass = npcs[idx].passengerData!;
           if (resources.passengers.length < cap) {
-            playSound('onboard');
-            setResources(prev => ({ ...prev, passengers: [...prev.passengers, npcs[idx].passengerData!] }));
+            playSound('onboard'); playSound('coin');
+            setResources(prev => ({ ...prev, passengers: [...prev.passengers, targetPass], gold: prev.gold + 20 }));
+            addNotification("I have onboarded you passenger. Pay 20 gold.");
             setNpcs(prev => prev.filter((_, i) => i !== idx));
+          } else {
+            setReplacementTarget(targetPass);
+            setNpcs(prev => prev.filter((_, i) => i !== idx)); // Remove the NPC since the encounter is starting
+            setActiveEncounter(generateReplacementEncounter(targetPass));
+            setStatus('encounter');
+            playSound('select');
           }
         }
       }
-      
       if (status === 'encounter' && activeEncounter && !lastChoiceResult) {
         const num = parseInt(key);
         if (!isNaN(num) && num > 0 && num <= activeEncounter.choices.length) handleChoice(activeEncounter.choices[num - 1]);
-      } else if (status === 'encounter' && lastChoiceResult && (key === ' ' || key === 'enter')) {
-        playSound('confirm'); closeEncounter();
-      }
+      } else if (status === 'encounter' && lastChoiceResult && (key === ' ' || key === 'enter')) { playSound('confirm'); closeEncounter(); }
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase());
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, [status, isPaused, activeEncounter, lastChoiceResult, npcs, playerPos, personPos, controlMode]);
+  }, [status, isPaused, activeEncounter, lastChoiceResult, npcs, playerPos, personPos, controlMode, flags, resources.passengers]);
 
   const handleChoice = (choice: Choice) => {
-    const hasRep = (choice.requiredFlag === 'reputation_10' ? resources.reputation >= 10 : true);
-    if (!hasRep) return;
     playSound('money');
+    if (choice.id === 'confirm_replacement' && replacementTarget) {
+      setResources(prev => {
+        const nextPass = [...prev.passengers];
+        nextPass.splice(Math.floor(Math.random() * nextPass.length), 1);
+        nextPass.push(replacementTarget);
+        return { ...prev, passengers: nextPass, gold: prev.gold + 50 };
+      });
+      addNotification("trading successful, passenger paid 50 gold and onboarded");
+    }
     setResources(prev => ({
       ...prev,
       food: Math.max(0, Math.min(100, prev.food - (choice.foodCost || 0) + (choice.foodGain || 0))),
       gold: Math.max(0, prev.gold - (choice.goldCost || 0) + (choice.goldGain || 0)),
-      reputation: prev.reputation - (choice.reputationCost || 0) + (choice.reputationGain || 0)
+      reputation: Math.max(0, prev.reputation - (choice.reputationCost || 0) + (choice.reputationGain || 0)),
+      lives: Math.min(3, prev.lives + (choice.id === 'mend_spirit' && prev.reputation >= 30 ? 1 : 0))
     }));
     if (choice.flagToSet) setFlags(prev => new Set(prev).add(choice.flagToSet!));
     if (choice.action) setPendingAction(choice.action);
@@ -615,60 +483,44 @@ const App: React.FC = () => {
   };
 
   const closeEncounter = () => {
-    const action = pendingAction;
-    setPendingAction(null); setActiveEncounter(null); setLastChoiceResult(null);
+    const action = pendingAction; setPendingAction(null); setActiveEncounter(null); setLastChoiceResult(null); setReplacementTarget(null);
     if (action === 'continue_journey') { setResources(prev => ({ ...prev, journeyCount: prev.journeyCount + 1, progress: 0 })); setNpcs([]); setStatus('playing'); }
     else if (action === 'end_journey') { setVictoryType('hero'); setStatus('victory'); stopAllAudio(); }
     else setStatus('playing');
   };
 
+  const handleVehicleSelect = (v: VehicleType) => {
+    const costs: Record<VehicleType, number> = { caravan: 0, bike: 50, car: 100, truck: 200, train: 500 };
+    if (resources.gold >= costs[v] || v === resources.vehicle) {
+      setResources(prev => ({ ...prev, vehicle: v, gold: v === prev.vehicle ? prev.gold : prev.gold - costs[v] }));
+      setStatus('playing');
+    }
+  };
+
   return (
     <div className="relative w-full h-screen bg-[#111] text-stone-100 overflow-hidden select-none">
-      <GameCanvas playerPos={playerPos} personPos={personPos} controlMode={controlMode} npcs={npcs} bullets={bullets} scrollOffset={scrollOffset} status={status} progress={resources.progress} passengers={resources.passengers} />
+      <GameCanvas playerPos={playerPos} personPos={personPos} controlMode={controlMode} npcs={npcs} bullets={bullets} scrollOffset={scrollOffset} status={status} progress={resources.progress} passengers={resources.passengers} vehicle={resources.vehicle} />
       {status !== 'title' && status !== 'gameover' && status !== 'victory' && (
-        <UIOverlay resources={resources} flags={flags} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} onPlaySound={playSound} />
+        <UIOverlay resources={resources} flags={flags} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} onPlaySound={playSound} notifications={notifications} />
       )}
-      {(status === 'title') && (
-        <TitleScreen onStart={startGame} onInitAudio={handleInitAudio} onPlaySound={playSound} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} onNarrate={playNarration} />
-      )}
-      {status === 'encounter' && activeEncounter && (
-        <ChoiceModal encounter={activeEncounter} onChoice={handleChoice} result={lastChoiceResult} onClose={closeEncounter} flags={flags} reputation={resources.reputation} passengers={resources.passengers} onPlaySound={playSound} />
-      )}
-      {(status === 'gameover' || status === 'victory') && (
-        <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={startGame} onPlaySound={playSound} />
-      )}
+      {status === 'title' && <TitleScreen onStart={startGame} onInitAudio={handleInitAudio} onPlaySound={playSound} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} />}
+      {status === 'encounter' && activeEncounter && <ChoiceModal encounter={activeEncounter} onChoice={handleChoice} result={lastChoiceResult} onClose={closeEncounter} flags={flags} reputation={resources.reputation} passengers={resources.passengers} onPlaySound={playSound} />}
+      {status === 'vehicle_select' && <VehicleModal currentVehicle={resources.vehicle} onSelect={handleVehicleSelect} onClose={() => setStatus('playing')} onPlaySound={playSound} />}
+      {(status === 'gameover' || status === 'victory') && <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={startGame} onPlaySound={playSound} />}
       {isPaused && (
-          <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-md flex items-center justify-center animate-in fade-in duration-300">
-              <div className="mc-container p-12 text-center border-[8px] border-black shadow-[0_0_80px_rgba(0,0,0,0.8)] space-y-8">
-                  <h2 className="text-8xl font-black text-pixel text-white uppercase italic animate-pulse">PAUSED</h2>
-                  <p className="text-3xl text-yellow-400 font-bold tracking-widest uppercase">Journey in Progress</p>
-                  <div className="flex flex-col gap-4">
-                    <button 
-                      onClick={() => { setIsPaused(false); playSound('confirm'); }}
-                      className="mc-button text-4xl bg-emerald-600 border-emerald-400"
-                    >
-                      RESUME [P]
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setIsPaused(false);
-                        stopAllAudio();
-                        setStatus('title');
-                        startIntroMusic();
-                        playSound('select');
-                      }}
-                      className="mc-button text-3xl bg-red-800 border-red-600"
-                    >
-                      ABANDON JOURNEY
-                    </button>
-                  </div>
-              </div>
+        <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-md flex items-center justify-center">
+          <div className="mc-container p-12 text-center border-[8px] border-black space-y-8">
+            <h2 className="text-8xl font-black text-pixel text-white uppercase italic animate-pulse">PAUSED</h2>
+            <div className="flex flex-col gap-4">
+              <button onClick={() => { setIsPaused(false); playSound('confirm'); }} className="mc-button text-4xl bg-emerald-600 border-emerald-400">RESUME [ESC]</button>
+              <button onClick={() => { setIsPaused(false); stopAllAudio(); setStatus('title'); startIntroMusic(); playSound('select'); }} className="mc-button text-3xl bg-red-800 border-red-600">ABANDON</button>
+            </div>
           </div>
+        </div>
       )}
-      
       {status === 'playing' && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 bg-black/50 px-6 py-2 border-2 border-white/20 text-yellow-400 font-bold uppercase text-pixel tracking-widest pointer-events-none animate-in slide-in-from-bottom-4">
-           {controlMode === 'caravan' ? "PRESS [C] TO EXIT VEHICLE" : "LEFT CLICK TO SHOOT RIGHT | WALK NEAR VEHICLE AND PRESS [C] TO ENTER"}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 bg-black/50 px-6 py-2 border-2 border-white/20 text-yellow-400 font-bold uppercase text-pixel tracking-widest pointer-events-none text-center">
+          {controlMode === 'caravan' ? "PRESS [C] EXIT | [V] HANGAR | [P] PASSENGER TRADE" : "LEFT CLICK SHOOT | WALK NEAR & [C] ENTER"}
         </div>
       )}
     </div>

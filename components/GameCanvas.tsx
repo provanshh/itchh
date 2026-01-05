@@ -1,5 +1,5 @@
 import React from 'react';
-import { GameStatus, NPC, Passenger, ControlMode, Bullet } from '../types';
+import { GameStatus, NPC, Passenger, ControlMode, Bullet, VehicleType } from '../types';
 import { WORLD_COLORS, WORLD_WIDTH, WORLD_HEIGHT, ROAD_TOP, ROAD_BOTTOM, INTERACTION_RANGE } from '../constants';
 
 interface GameCanvasProps {
@@ -12,9 +12,69 @@ interface GameCanvasProps {
   status: GameStatus;
   progress: number;
   passengers: Passenger[];
+  vehicle: VehicleType;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMode, npcs, bullets, scrollOffset, status, progress, passengers }) => {
+const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMode, npcs, bullets, scrollOffset, status, progress, passengers, vehicle }) => {
+  const renderVehicle = () => {
+    switch (vehicle) {
+      case 'bike':
+        return (
+          <g>
+            <rect x="-12" y="-4" width="24" height="8" fill="#333" stroke="#000" strokeWidth="2" />
+            <circle cx="-10" cy="4" r="5" fill="#111" stroke="#000" strokeWidth="1" />
+            <circle cx="10" cy="4" r="5" fill="#111" stroke="#000" strokeWidth="1" />
+            <rect x="-4" y="-12" width="4" height="10" fill="#cc3333" stroke="#000" strokeWidth="1" />
+            <rect x="-2" y="-14" width="8" height="2" fill="#555" stroke="#000" strokeWidth="1" />
+          </g>
+        );
+      case 'car':
+        return (
+          <g>
+            <rect x="-20" y="-8" width="40" height="16" fill="#4466aa" stroke="#000" strokeWidth="2" />
+            <rect x="-12" y="-16" width="20" height="10" fill="#aaccff" stroke="#000" strokeWidth="2" />
+            <circle cx="-14" cy="8" r="6" fill="#111" stroke="#000" strokeWidth="1" />
+            <circle cx="14" cy="8" r="6" fill="#111" stroke="#000" strokeWidth="1" />
+            <rect x="18" y="-4" width="4" height="4" fill="#ffaa00" />
+          </g>
+        );
+      case 'truck':
+        return (
+          <g>
+            <rect x="-30" y="-12" width="60" height="24" fill="#aa4444" stroke="#000" strokeWidth="2" />
+            <rect x="15" y="-22" width="15" height="20" fill="#333" stroke="#000" strokeWidth="2" />
+            <rect x="18" y="-18" width="8" height="6" fill="#aaccff" />
+            <circle cx="-20" cy="12" r="8" fill="#111" stroke="#000" strokeWidth="1" />
+            <circle cx="0" cy="12" r="8" fill="#111" stroke="#000" strokeWidth="1" />
+            <circle cx="20" cy="12" r="8" fill="#111" stroke="#000" strokeWidth="1" />
+          </g>
+        );
+      case 'train':
+        return (
+          <g>
+            <rect x="-40" y="-15" width="80" height="30" fill="#222" stroke="#000" strokeWidth="2" />
+            <rect x="20" y="-30" width="20" height="25" fill="#444" stroke="#000" strokeWidth="2" />
+            <rect x="25" y="-35" width="10" height="10" fill="#666" stroke="#000" strokeWidth="1" />
+            <circle cx="-30" cy="15" r="7" fill="#555" stroke="#000" strokeWidth="1" />
+            <circle cx="-10" cy="15" r="7" fill="#555" stroke="#000" strokeWidth="1" />
+            <circle cx="10" cy="15" r="7" fill="#555" stroke="#000" strokeWidth="1" />
+            <circle cx="30" cy="15" r="7" fill="#555" stroke="#000" strokeWidth="1" />
+            <rect x="40" y="-5" width="5" height="10" fill="#ffaa00" className="animate-pulse" />
+          </g>
+        );
+      case 'caravan':
+      default:
+        return (
+          <g>
+            <rect x="-14" y="-12" width="28" height="20" fill="#3d2b1f" stroke="#000" strokeWidth="2" />
+            <rect x="-14" y="-22" width="28" height="12" fill="#e0e0e0" stroke="#000" strokeWidth="2" />
+            <rect x="-12" y="4" width="8" height="8" fill="#1a1a1a" stroke="#000" strokeWidth="2" />
+            <rect x="4" y="4" width="8" height="8" fill="#1a1a1a" stroke="#000" strokeWidth="2" />
+          </g>
+        );
+    }
+  };
+
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-[#1a1a1a]">
       <svg width={WORLD_WIDTH} height={WORLD_HEIGHT} viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`} className="w-full h-auto shadow-2xl border-4 border-black">
@@ -76,6 +136,37 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
               );
           }
 
+          if (npc.type === 'trader' || npc.type === 'food_cart' || npc.type === 'mystic') {
+              const isMoneyThemed = npc.type === 'trader';
+              const boxColor = isMoneyThemed ? "#1e3a1e" : npc.type === 'haven' ? "#ffffff" : "#444";
+              
+              return (
+                <g key={npc.id} transform={`translate(${npc.x}, ${npc.y})`}>
+                    <ellipse rx={npc.width/2} ry={6} cy={npc.height/2 + 5} fill="rgba(0,0,0,0.3)" />
+                    <rect x={-npc.width/2} y={-npc.height/2} width={npc.width} height={npc.height} fill={boxColor} stroke="black" strokeWidth="3" />
+                    <rect x={-npc.width/2 + 6} y={-npc.height/2 + 6} width={npc.width - 12} height={npc.height / 2} fill="#222" stroke="black" strokeWidth="2" />
+                    <g transform="translate(0, -5)">
+                        <rect x="-8" y="-4" width="16" height="12" fill={isMoneyThemed ? "#3b82f6" : "#e11d48"} stroke="black" strokeWidth="1" />
+                        <rect x="-6" y="-14" width="12" height="12" fill="#ffdbac" stroke="black" strokeWidth="1" />
+                        <rect x="-3" y="-10" width="2" height="2" fill="black" />
+                        <rect x="1" y="-10" width="2" height="2" fill="black" />
+                    </g>
+                    {isMoneyThemed && (
+                        <g>
+                            <text x={-npc.width/2 + 10} y={npc.height/2 - 5} className="fill-yellow-400 font-bold text-[12px]">$</text>
+                            <text x={npc.width/2 - 16} y={npc.height/2 - 5} className="fill-yellow-400 font-bold text-[12px]">$</text>
+                            <rect x="-10" y={npc.height/2 - 12} width="20" height="4" fill="#fbbf24" opacity="0.4" />
+                        </g>
+                    )}
+                    <text y={npc.height/2 + 20} textAnchor="middle" className="fill-white text-[14px] font-bold text-pixel uppercase">
+                        {npc.type.toUpperCase()}
+                    </text>
+                    <circle cx="0" cy={-npc.height/2 - 15} r="10" fill="#000" />
+                    <text y={-npc.height/2 - 8} textAnchor="middle" className="fill-yellow-400 text-xl font-black animate-pulse">!</text>
+                </g>
+              );
+          }
+
           return (
             <g key={npc.id} transform={`translate(${npc.x}, ${npc.y})`}>
                 <rect x={-npc.width/2} y={-npc.height/2} width={npc.width} height={npc.height} fill={npc.type === 'haven' ? "#ffffff" : "#444"} stroke="black" strokeWidth="2" />
@@ -93,13 +184,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
           <circle key={b.id} cx={b.x} cy={b.y} r="3" fill="#ff0" stroke="#000" strokeWidth="1" />
         ))}
 
-        {/* Player Caravan */}
+        {/* Player Active Vehicle */}
         <g transform={`translate(${playerPos.x}, ${playerPos.y})`}>
           <rect x="-16" y="10" width="32" height="6" fill="rgba(0,0,0,0.3)" />
-          <rect x="-14" y="-12" width="28" height="20" fill="#3d2b1f" stroke="#000" strokeWidth="2" />
-          <rect x="-14" y="-22" width="28" height="12" fill="#e0e0e0" stroke="#000" strokeWidth="2" />
-          <rect x="-12" y="4" width="8" height="8" fill="#1a1a1a" stroke="#000" strokeWidth="2" />
-          <rect x="4" y="4" width="8" height="8" fill="#1a1a1a" stroke="#000" strokeWidth="2" />
+          
+          {renderVehicle()}
           
           {passengers.map((p, i) => {
              const colors = { merchant: '#fbbf24', cook: '#f87171', scholar: '#60a5fa', guard: '#4ade80' };
@@ -119,11 +208,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
              <rect x="-6" y="-14" width="12" height="18" fill="#ffdbac" stroke="black" strokeWidth="1" />
              <rect x="-6" y="-4" width="12" height="10" fill="#3b82f6" stroke="black" strokeWidth="1" />
              <rect x="-8" y="-14" width="16" height="4" fill="#333" />
-             
-             {/* THE GUN */}
              <rect x="6" y="-8" width="8" height="4" fill="#000" stroke="#444" strokeWidth="1" />
              <rect x="6" y="-6" width="2" height="6" fill="#000" stroke="#444" strokeWidth="1" />
-
              <rect x="-4" y="4" width="3" height="4" fill="#000" className="animate-bounce" />
              <rect x="1" y="4" width="3" height="4" fill="#000" className="animate-bounce" style={{animationDelay: '0.1s'}} />
           </g>

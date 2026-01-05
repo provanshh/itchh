@@ -5,6 +5,8 @@ export interface Passenger {
   bonusText: string;
 }
 
+export type VehicleType = 'caravan' | 'bike' | 'truck' | 'car' | 'train';
+
 export interface ResourceState {
   food: number;
   gold: number;
@@ -14,6 +16,7 @@ export interface ResourceState {
   lives: number;
   score: number;
   passengers: Passenger[];
+  vehicle: VehicleType;
 }
 
 export interface Choice {
@@ -63,6 +66,6 @@ export interface Bullet {
 
 export type VictoryType = 'hero' | 'merchant_prince' | 'iron_monger' | 'survivor';
 
-export type GameStatus = 'title' | 'playing' | 'encounter' | 'gameover' | 'victory';
+export type GameStatus = 'title' | 'playing' | 'encounter' | 'gameover' | 'victory' | 'vehicle_select';
 
 export type ControlMode = 'caravan' | 'person';

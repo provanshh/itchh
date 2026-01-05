@@ -98,6 +98,79 @@ export const ENCOUNTERS: Record<string, Encounter> = {
       }
     ]
   },
+  technomancer: {
+    id: 'technomancer',
+    title: 'The Technomancer',
+    description: 'A dealer in chrome and sparks. "The road is digital, caravanner. Upgrade your soul with the latest block-tech."',
+    icon: '⚡',
+    choices: [
+      {
+        id: 'overclock',
+        text: 'Overclock Engine (100 Gold)',
+        consequenceText: '"Maximum output achieved! You feel the surge in every gear."',
+        goldCost: 100,
+        flagToSet: 'speed_upgrade',
+        color: 'bg-purple-600'
+      },
+      {
+        id: 'life_support',
+        text: 'Nano-Repairs (80 Gold)',
+        consequenceText: 'Tiny bots swarm your vehicle, patching holes and reinforcing the hull. You feel safer.',
+        goldCost: 80,
+        reputationGain: 5,
+        color: 'bg-cyan-500'
+      }
+    ]
+  },
+  soul_stitcher: {
+    id: 'soul_stitcher',
+    title: 'The Soul-Stitcher',
+    description: 'An entity draped in ethereal threads. "The crossroads are heavy with the weight of your choices. Shall I lighten your load or mend your spirit?"',
+    icon: '🧶',
+    choices: [
+      {
+        id: 'mend_spirit',
+        text: 'Mend Spirit (30 Renown)',
+        consequenceText: 'Your renown fades as your vitality returns. A fair trade for the weary.',
+        reputationCost: 30,
+        reputationGain: 0, // Reset gain logic or handle in App
+        color: 'bg-indigo-700'
+      },
+      {
+        id: 'sacrifice_gold',
+        text: 'Blessing of Gold (50 Gold)',
+        consequenceText: 'The spirits accept your offering. You feel a divine wind at your back.',
+        goldCost: 50,
+        reputationGain: 20,
+        color: 'bg-yellow-600'
+      }
+    ]
+  },
+  provision_master: {
+    id: 'provision_master',
+    title: 'The Provision Master',
+    description: 'A giant in a pristine chef\'s hat. "Only the finest chunks for the finest drivers. My luxury exports will keep your crew in high spirits."',
+    icon: '🍳',
+    choices: [
+      {
+        id: 'royal_feast',
+        text: 'Royal Feast (60 Gold)',
+        consequenceText: 'A massive spread of rare delicacies. Your crew will sing your praises for miles!',
+        goldCost: 60,
+        foodGain: 100,
+        reputationGain: 15,
+        color: 'bg-pink-600'
+      },
+      {
+        id: 'mercy_rations',
+        text: 'Renown Exchange (15 Renown)',
+        consequenceText: 'Your stories are worth their weight in bread. The Master feeds you out of professional respect.',
+        reputationCost: 15,
+        foodGain: 40,
+        color: 'bg-amber-700'
+      }
+    ]
+  },
   desert_mirage: {
     id: 'desert_mirage',
     title: 'The Desert Mirage',

@@ -10,13 +10,15 @@ interface UIOverlayProps {
   onSetMusicVolume: (v: number) => void;
   onSetAmbientVolume: (v: number) => void;
   onPlaySound: (type: any) => void;
+  notifications: {id: number, message: string}[];
 }
 
 const UIOverlay: React.FC<UIOverlayProps> = ({ 
   resources, 
   flags,
   musicVolume, ambientVolume, onSetMusicVolume, onSetAmbientVolume,
-  onPlaySound
+  onPlaySound,
+  notifications
 }) => {
   const foodWidth = Math.min(100, (resources.food / 100) * 100);
   const [showSettings, setShowSettings] = useState(false);
@@ -77,6 +79,17 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none z-40 p-8 flex flex-col justify-between">
+      {/* Notifications Layer */}
+      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50">
+        {notifications.map(n => (
+          <div key={n.id} className="mc-container px-6 py-2 bg-emerald-600 border-emerald-400 border-2 shadow-[0_4px_0_#064e3b] animate-float-toast">
+            <span className="text-white text-xl md:text-2xl font-black text-pixel uppercase drop-shadow-[2px_2px_0px_#000]">
+              {n.message}
+            </span>
+          </div>
+        ))}
+      </div>
+
       {/* Top Right: Settings Button */}
       <div className="absolute right-8 top-8 pointer-events-auto">
         <button 

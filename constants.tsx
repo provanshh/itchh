@@ -1,7 +1,7 @@
-
 import React from 'react';
+import { ResourceState } from './types';
 
-export const INITIAL_RESOURCES = {
+export const INITIAL_RESOURCES: ResourceState = {
   food: 100,
   gold: 32,
   reputation: 0,
@@ -10,6 +10,7 @@ export const INITIAL_RESOURCES = {
   lives: 3,
   score: 0,
   passengers: [],
+  vehicle: 'caravan',
 };
 
 export const WORLD_WIDTH = 1200;
