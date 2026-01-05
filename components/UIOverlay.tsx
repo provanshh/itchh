@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ResourceState } from '../types';
 
@@ -7,8 +6,10 @@ interface UIOverlayProps {
   flags: Set<string>;
   musicVolume: number;
   ambientVolume: number;
+  isMouseControlEnabled: boolean;
   onSetMusicVolume: (v: number) => void;
   onSetAmbientVolume: (v: number) => void;
+  onSetMouseControl: (enabled: boolean) => void;
   onPlaySound: (type: any) => void;
   notifications: {id: number, message: string}[];
 }
@@ -16,7 +17,8 @@ interface UIOverlayProps {
 const UIOverlay: React.FC<UIOverlayProps> = ({ 
   resources, 
   flags,
-  musicVolume, ambientVolume, onSetMusicVolume, onSetAmbientVolume,
+  musicVolume, ambientVolume, isMouseControlEnabled,
+  onSetMusicVolume, onSetAmbientVolume, onSetMouseControl,
   onPlaySound,
   notifications
 }) => {
@@ -95,67 +97,98 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         <button 
           onClick={toggleSettings}
           onMouseEnter={() => onPlaySound('select')}
-          className="mc-button w-14 h-14 text-2xl flex items-center justify-center bg-[#444] border-black"
+          className="mc-button w-14 h-14 text-2xl flex items-center justify-center bg-[#444] border-black hover:rotate-90 transition-transform duration-300"
         >
           ⚙️
         </button>
       </div>
 
-      {/* Settings Modal */}
+      {/* Settings Modal (Overlay everything) */}
       {showSettings && (
-        <div className="absolute right-8 top-24 w-80 bg-black/90 border-4 border-black p-6 pointer-events-auto animate-in slide-in-from-right-10">
-          <h3 className="text-2xl font-black text-white text-pixel uppercase mb-6 border-b-2 border-white/20 pb-2">Audio Config</h3>
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm uppercase font-bold text-white/60">
-                <span>Music</span>
-                <span>{Math.round(musicVolume * 100)}%</span>
-              </div>
-              <input 
-                type="range" min="0" max="1" step="0.01" 
-                value={musicVolume} 
-                onChange={(e) => onSetMusicVolume(parseFloat(e.target.value))}
-                className="w-full accent-indigo-500 bg-stone-700 h-4 border-2 border-black appearance-none"
-              />
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] pointer-events-auto animate-in fade-in duration-300 backdrop-blur-md">
+          <div className="mc-container max-w-lg w-full p-0 overflow-hidden border-[8px] border-black shadow-[0_0_80px_rgba(0,0,0,0.8)]">
+            <div className="bg-indigo-600 p-6 border-b-8 border-black">
+              <h2 className="text-4xl md:text-5xl font-black text-center text-white text-pixel uppercase leading-none">GAME SETTINGS</h2>
             </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm uppercase font-bold text-white/60">
-                <span>Ambient</span>
-                <span>{Math.round(ambientVolume * 100)}%</span>
+            <div className="bg-[#c6c6c6] p-8 space-y-8">
+              {/* Audio Config */}
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xl uppercase font-black text-stone-900 text-pixel">
+                    <span>Music Volume</span>
+                    <span className="text-indigo-700">{Math.round(musicVolume * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="1" step="0.01" 
+                    value={musicVolume} 
+                    onChange={(e) => onSetMusicVolume(parseFloat(e.target.value))}
+                    className="w-full accent-indigo-600 bg-stone-400 h-6 border-4 border-black appearance-none cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xl uppercase font-black text-stone-900 text-pixel">
+                    <span>Ambient Volume</span>
+                    <span className="text-amber-700">{Math.round(ambientVolume * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="1" step="0.01" 
+                    value={ambientVolume} 
+                    onChange={(e) => onSetAmbientVolume(parseFloat(e.target.value))}
+                    className="w-full accent-amber-600 bg-stone-400 h-6 border-4 border-black appearance-none cursor-pointer"
+                  />
+                </div>
               </div>
-              <input 
-                type="range" min="0" max="1" step="0.01" 
-                value={ambientVolume} 
-                onChange={(e) => onSetAmbientVolume(parseFloat(e.target.value))}
-                className="w-full accent-amber-500 bg-stone-700 h-4 border-2 border-black appearance-none"
-              />
+
+              {/* Control Mode Config */}
+              <div className="pt-4 border-t-4 border-black/10">
+                <div className="flex items-center justify-between">
+                   <div className="flex flex-col">
+                      <span className="text-2xl font-black text-stone-900 text-pixel uppercase">MOUSE MODE</span>
+                      <span className="text-sm font-bold text-stone-600 uppercase italic">Follow X-Pointer</span>
+                   </div>
+                   <button 
+                      onClick={() => {
+                        onPlaySound('select');
+                        onSetMouseControl(!isMouseControlEnabled);
+                      }}
+                      className={`mc-button w-32 py-2 text-xl font-black uppercase border-2 border-black ${isMouseControlEnabled ? 'bg-emerald-600' : 'bg-red-800'}`}
+                   >
+                      {isMouseControlEnabled ? 'ON' : 'OFF'}
+                   </button>
+                </div>
+              </div>
+            </div>
+            <div className="bg-[#3a3a3a] p-4">
+              <button 
+                onClick={toggleSettings}
+                onMouseEnter={() => onPlaySound('select')}
+                className="mc-button w-full text-2xl py-3 bg-amber-600 hover:bg-amber-500 border-2 border-black font-black uppercase tracking-widest text-pixel shadow-[0_4px_0_#92400e]"
+              >
+                BACK TO ROAD
+              </button>
             </div>
           </div>
-          <button 
-            onClick={toggleSettings}
-            className="w-full mt-6 bg-amber-600 p-2 font-black uppercase border-2 border-black hover:bg-amber-500"
-          >
-            Close
-          </button>
         </div>
       )}
 
-      {/* Right: Passengers List */}
-      <div className="absolute right-8 top-24 w-64 flex flex-col gap-2 mt-16">
-         <h3 className="text-white text-xl font-bold uppercase tracking-widest bg-black/40 p-2 border-b-2 border-yellow-500 text-pixel">The Caravan Crew ({resources.passengers.length}/{maxPassengers})</h3>
-         {resources.passengers.length === 0 && (
-             <p className="text-white/40 text-sm italic p-2 bg-black/20">Wandering the lonely roads alone...</p>
-         )}
-         {resources.passengers.map(p => (
-             <div key={p.id} className="bg-black/60 border-2 border-white/10 p-3 flex flex-col animate-in slide-in-from-right-10">
-                 <div className="flex justify-between items-center mb-1">
-                    <span className="text-yellow-400 font-bold uppercase text-lg text-pixel">{p.name}</span>
-                    <span className="text-[10px] bg-white/10 px-2 py-0.5 text-white uppercase">{p.type}</span>
-                 </div>
-                 <span className="text-emerald-400 text-sm font-bold tracking-tight">{p.bonusText}</span>
-             </div>
-         ))}
-      </div>
+      {/* Right: Passengers List (Only visible when settings is closed) */}
+      {!showSettings && (
+        <div className="absolute right-8 top-24 w-64 flex flex-col gap-2 mt-16">
+           <h3 className="text-white text-xl font-bold uppercase tracking-widest bg-black/40 p-2 border-b-2 border-yellow-500 text-pixel">The Caravan Crew ({resources.passengers.length}/{maxPassengers})</h3>
+           {resources.passengers.length === 0 && (
+               <p className="text-white/40 text-sm italic p-2 bg-black/20">Wandering the lonely roads alone...</p>
+           )}
+           {resources.passengers.map(p => (
+               <div key={p.id} className="bg-black/60 border-2 border-white/10 p-3 flex flex-col animate-in slide-in-from-right-10">
+                   <div className="flex justify-between items-center mb-1">
+                      <span className="text-yellow-400 font-bold uppercase text-lg text-pixel">{p.name}</span>
+                      <span className="text-[10px] bg-white/10 px-2 py-0.5 text-white uppercase">{p.type}</span>
+                   </div>
+                   <span className="text-emerald-400 text-sm font-bold tracking-tight">{p.bonusText}</span>
+               </div>
+           ))}
+        </div>
+      )}
 
       <div className="flex justify-between items-end">
         <div className="flex flex-col gap-4">

@@ -133,10 +133,12 @@ const App: React.FC = () => {
 
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [ambientVolume, setAmbientVolume] = useState(0.5);
+  const [isMouseControlEnabled, setIsMouseControlEnabled] = useState(false);
 
   const keys = useRef<Set<string>>(new Set());
   const requestRef = useRef<number>();
   const spawnTimer = useRef<number>(0);
+  const mousePos = useRef({ x: 200, y: 300 });
 
   useEffect(() => {
     if (audioCtx) {
@@ -239,7 +241,7 @@ const App: React.FC = () => {
     setNotifications(prev => [...prev, { id, message }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 8000); 
+    }, 5000); 
   };
 
   const spawnNPC = useCallback(() => {
@@ -320,17 +322,24 @@ const App: React.FC = () => {
       case 'train': vSpeedMult = 1.6; vFoodMult = 1.8; break;
     }
     const currentSpeed = PLAYER_SPEED * vSpeedMult * (flags.has('speed_upgrade') ? 1.4 : 1.0);
+    
     if (controlMode === 'person') {
       setPersonPos(prev => {
         let nx = prev.x, ny = prev.y;
-        if (keys.current.has('w') || keys.current.has('arrowup')) ny -= PLAYER_SPEED * 1.2;
-        if (keys.current.has('s') || keys.current.has('arrowdown')) ny += PLAYER_SPEED * 1.2;
-        if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= PLAYER_SPEED * 1.2;
-        if (keys.current.has('d') || keys.current.has('arrowright')) nx += PLAYER_SPEED * 1.2;
+        if (isMouseControlEnabled) {
+          const tx = mousePos.current.x;
+          const ty = mousePos.current.y;
+          nx += (tx - prev.x) * 0.15;
+          ny += (ty - prev.y) * 0.15;
+        } else {
+          if (keys.current.has('w') || keys.current.has('arrowup')) ny -= PLAYER_SPEED * 1.2;
+          if (keys.current.has('s') || keys.current.has('arrowdown')) ny += PLAYER_SPEED * 1.2;
+          if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= PLAYER_SPEED * 1.2;
+          if (keys.current.has('d') || keys.current.has('arrowright')) nx += PLAYER_SPEED * 1.2;
+        }
         return { x: Math.max(0, Math.min(WORLD_WIDTH, nx)), y: Math.max(0, Math.min(WORLD_HEIGHT, ny)) };
       });
       
-      // BULLET MOVEMENT & COLLISION
       setBullets(prev => {
         const next = prev.map(b => ({ ...b, x: b.x + b.vx, y: b.y + b.vy }))
                         .filter(b => b.x > 0 && b.x < WORLD_WIDTH && b.y > 0 && b.y < WORLD_HEIGHT);
@@ -350,7 +359,7 @@ const App: React.FC = () => {
 
         if (hitNpcId) {
           playSound('impact');
-          setResources(r => ({ ...r, gold: Math.max(0, r.gold - 5) })); // Small penalty for chaotic behavior
+          setResources(r => ({ ...r, gold: Math.max(0, r.gold - 5) }));
           setNpcs(n => n.filter(npc => npc.id !== hitNpcId));
           return next.filter(b => b.id !== bulletIdToRemove);
         }
@@ -360,14 +369,23 @@ const App: React.FC = () => {
     } else {
       setPlayerPos(prev => {
         let nx = prev.x, ny = prev.y;
-        if (keys.current.has('w') || keys.current.has('arrowup')) ny -= currentSpeed;
-        if (keys.current.has('s') || keys.current.has('arrowdown')) ny += currentSpeed;
-        if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= currentSpeed;
-        if (keys.current.has('d') || keys.current.has('arrowright')) nx += currentSpeed;
+        
+        if (isMouseControlEnabled) {
+          const targetX = mousePos.current.x;
+          const targetY = mousePos.current.y;
+          nx += (targetX - prev.x) * 0.1;
+          ny += (targetY - prev.y) * 0.1;
+        } else {
+          if (keys.current.has('w') || keys.current.has('arrowup')) ny -= currentSpeed;
+          if (keys.current.has('s') || keys.current.has('arrowdown')) ny += currentSpeed;
+          if (keys.current.has('a') || keys.current.has('arrowleft')) nx -= currentSpeed;
+          if (keys.current.has('d') || keys.current.has('arrowright')) nx += currentSpeed;
+        }
+
         return { x: Math.max(50, Math.min(WORLD_WIDTH - 50, nx)), y: Math.max(ROAD_TOP + 20, Math.min(ROAD_BOTTOM - 20, ny)) };
       });
       setResources(prev => {
-        const isMoving = keys.current.size > 0;
+        const isMoving = keys.current.size > 0 || isMouseControlEnabled;
         let drain = (isMoving ? FOOD_DRAIN_RATE * 2 : FOOD_DRAIN_RATE) * vFoodMult;
         if (prev.passengers.some(p => p.type === 'cook')) drain *= 0.8;
         if (flags.has('efficiency_upgrade')) drain *= 0.75;
@@ -390,7 +408,7 @@ const App: React.FC = () => {
       if (spawnTimer.current > 1000 && resources.progress < 95) { spawnNPC(); spawnTimer.current = 0; }
     }
     requestRef.current = requestAnimationFrame(gameLoop);
-  }, [status, playerPos, personPos, controlMode, npcs, spawnNPC, isPaused, flags, resources.vehicle, resources.food, resources.lives, resources.progress, resources.passengers]);
+  }, [status, playerPos, personPos, controlMode, npcs, spawnNPC, isPaused, flags, resources.vehicle, resources.food, resources.lives, resources.progress, resources.passengers, isMouseControlEnabled]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(gameLoop);
@@ -412,14 +430,50 @@ const App: React.FC = () => {
         setBullets(prev => [...prev, bullet]);
       }
     };
+    
+    const handleMouseMove = (e: MouseEvent) => {
+        const rect = document.querySelector('svg')?.getBoundingClientRect();
+        if (rect) {
+            const rx = ((e.clientX - rect.left) / rect.width) * WORLD_WIDTH;
+            const ry = ((e.clientY - rect.top) / rect.height) * WORLD_HEIGHT;
+            mousePos.current = { x: rx, y: ry };
+        }
+    };
+
     window.addEventListener('mousedown', handleMouseDown);
-    return () => window.removeEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+        window.removeEventListener('mousedown', handleMouseDown);
+        window.removeEventListener('mousemove', handleMouseMove);
+    };
   }, [status, controlMode, personPos]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      if (key === 'escape') { if (status === 'vehicle_select') setStatus('playing'); else setIsPaused(prev => !prev); playSound('select'); return; }
+      
+      if (key === 'f') {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch((err) => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+          });
+        } else {
+          document.exitFullscreen();
+        }
+        playSound('select');
+        return;
+      }
+
+      if (key === 'escape' || (key === ' ' && status === 'playing' && !activeEncounter)) {
+        if (status === 'vehicle_select') {
+          setStatus('playing');
+        } else if (status === 'playing') {
+          setIsPaused(prev => !prev);
+        }
+        playSound('select');
+        return;
+      }
+
       if (key === 'p' && status === 'playing' && controlMode === 'caravan') {
         setActiveEncounter(generatePassengerTradeEncounter()); setStatus('encounter'); addNotification("Trading with passenger"); playSound('select'); return;
       }
@@ -447,7 +501,7 @@ const App: React.FC = () => {
             setNpcs(prev => prev.filter((_, i) => i !== idx));
           } else {
             setReplacementTarget(targetPass);
-            setNpcs(prev => prev.filter((_, i) => i !== idx)); // Remove the NPC since the encounter is starting
+            setNpcs(prev => prev.filter((_, i) => i !== idx));
             setActiveEncounter(generateReplacementEncounter(targetPass));
             setStatus('encounter');
             playSound('select');
@@ -506,7 +560,18 @@ const App: React.FC = () => {
     <div className="relative w-full h-screen bg-[#111] text-stone-100 overflow-hidden select-none">
       <GameCanvas playerPos={playerPos} personPos={personPos} controlMode={controlMode} npcs={npcs} bullets={bullets} scrollOffset={scrollOffset} status={status} progress={resources.progress} passengers={resources.passengers} vehicle={resources.vehicle} theme={theme} />
       {status !== 'title' && status !== 'gameover' && status !== 'victory' && (
-        <UIOverlay resources={resources} flags={flags} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} onPlaySound={playSound} notifications={notifications} />
+        <UIOverlay 
+            resources={resources} 
+            flags={flags} 
+            musicVolume={musicVolume} 
+            ambientVolume={ambientVolume} 
+            isMouseControlEnabled={isMouseControlEnabled}
+            onSetMusicVolume={setMusicVolume} 
+            onSetAmbientVolume={setAmbientVolume} 
+            onSetMouseControl={setIsMouseControlEnabled}
+            onPlaySound={playSound} 
+            notifications={notifications} 
+        />
       )}
       {status === 'title' && <TitleScreen onStart={startGame} onInitAudio={handleInitAudio} onPlaySound={playSound} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} />}
       {status === 'encounter' && activeEncounter && <ChoiceModal encounter={activeEncounter} onChoice={handleChoice} result={lastChoiceResult} onClose={closeEncounter} flags={flags} reputation={resources.reputation} passengers={resources.passengers} onPlaySound={playSound} />}
@@ -514,18 +579,53 @@ const App: React.FC = () => {
       {(status === 'gameover' || status === 'victory') && <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={() => startGame(theme)} onPlaySound={playSound} />}
       {isPaused && (
         <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-md flex items-center justify-center">
-          <div className="mc-container p-12 text-center border-[8px] border-black space-y-8">
+          <div className="mc-container p-12 text-center border-[8px] border-black space-y-8 relative">
             <h2 className="text-8xl font-black text-pixel text-white uppercase italic animate-pulse">PAUSED</h2>
             <div className="flex flex-col gap-4">
-              <button onClick={() => { setIsPaused(false); playSound('confirm'); }} className="mc-button text-4xl bg-emerald-600 border-emerald-400">RESUME [ESC]</button>
+              <button onClick={() => { setIsPaused(false); playSound('confirm'); }} className="mc-button text-4xl bg-emerald-600 border-emerald-400">RESUME [ESC/SPACE]</button>
               <button onClick={() => { setIsPaused(false); stopAllAudio(); setStatus('title'); startIntroMusic(); playSound('select'); }} className="mc-button text-3xl bg-red-800 border-red-600">ABANDON</button>
             </div>
+          </div>
+          
+          <div className="absolute right-12 top-1/2 -translate-y-1/2 mc-container p-6 bg-[#c6c6c6] border-[6px] border-black w-72 shadow-2xl animate-in slide-in-from-right-10 flex flex-col gap-4">
+             <h3 className="text-3xl font-black text-pixel text-stone-900 uppercase border-b-4 border-black/20 pb-2">SHORTCUT KEYS</h3>
+             <div className="space-y-3">
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>MOVE</span>
+                    <kbd className="text-sm">W A S D</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>TRADE</span>
+                    <kbd className="text-sm">P</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>HANGAR</span>
+                    <kbd className="text-sm">V</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>VEHICLE</span>
+                    <kbd className="text-sm">C</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>ONBOARD</span>
+                    <kbd className="text-sm">E</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>FULLSCREEN</span>
+                    <kbd className="text-sm">F</kbd>
+                </div>
+                <div className="flex justify-between items-center text-stone-800 font-bold uppercase text-lg">
+                    <span>PAUSE</span>
+                    <kbd className="text-sm">SPACE</kbd>
+                </div>
+             </div>
+             <p className="text-xs text-stone-600 italic font-bold text-center mt-2">Trade. Travel. Encounter.</p>
           </div>
         </div>
       )}
       {status === 'playing' && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 bg-black/50 px-6 py-2 border-2 border-white/20 text-yellow-400 font-bold uppercase text-pixel tracking-widest pointer-events-none text-center">
-          {controlMode === 'caravan' ? "PRESS [C] EXIT | [V] HANGAR | [P] PASSENGER TRADE" : "LEFT CLICK SHOOT | WALK NEAR & [C] ENTER"}
+          {controlMode === 'caravan' ? "PRESS [C] EXIT | [V] HANGAR | [P] PASSENGER TRADE | [SPACE] PAUSE | [F] FULLSCREEN" : "LEFT CLICK SHOOT | WALK NEAR & [C] ENTER | [F] FULLSCREEN"}
         </div>
       )}
     </div>
