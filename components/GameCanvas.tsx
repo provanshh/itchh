@@ -1,6 +1,6 @@
 import React from 'react';
-import { GameStatus, NPC, Passenger, ControlMode, Bullet, VehicleType } from '../types';
-import { WORLD_COLORS, WORLD_WIDTH, WORLD_HEIGHT, ROAD_TOP, ROAD_BOTTOM, INTERACTION_RANGE } from '../constants';
+import { GameStatus, NPC, Passenger, ControlMode, Bullet, VehicleType, ThemeType } from '../types';
+import { WORLD_WIDTH, WORLD_HEIGHT, ROAD_TOP, ROAD_BOTTOM, INTERACTION_RANGE } from '../constants';
 
 interface GameCanvasProps {
   playerPos: { x: number, y: number };
@@ -13,9 +13,19 @@ interface GameCanvasProps {
   progress: number;
   passengers: Passenger[];
   vehicle: VehicleType;
+  theme: ThemeType;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMode, npcs, bullets, scrollOffset, status, progress, passengers, vehicle }) => {
+const THEME_COLORS = {
+  desert: { road: '#866043', landscape: '#55aa33', pattern: 'rgba(255,255,255,0.1)' },
+  neon: { road: '#1a1a2e', landscape: '#0f0f1b', pattern: 'rgba(0,255,255,0.2)' },
+  frozen: { road: '#a5f3fc', landscape: '#f1f5f9', pattern: 'rgba(0,0,0,0.05)' },
+  toxic: { road: '#3f6212', landscape: '#1a2e05', pattern: 'rgba(100,255,0,0.1)' },
+};
+
+const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMode, npcs, bullets, scrollOffset, status, progress, passengers, vehicle, theme }) => {
+  const colors = THEME_COLORS[theme] || THEME_COLORS.desert;
+
   const renderVehicle = () => {
     switch (vehicle) {
       case 'bike':
@@ -88,15 +98,15 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
             <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
           </radialGradient>
           <pattern id="roadPattern" x={-scrollOffset} y="0" width="100" height="100" patternUnits="userSpaceOnUse">
-             <rect width="100" height="100" fill={WORLD_COLORS.road} />
-             <rect x="0" y="45" width="20" height="10" fill="rgba(255,255,255,0.1)" />
+             <rect width="100" height="100" fill={colors.road} />
+             <rect x="0" y="45" width="20" height="10" fill={colors.pattern} />
           </pattern>
         </defs>
 
-        {/* Grass Background */}
-        <rect width={WORLD_WIDTH} height={WORLD_HEIGHT} fill={WORLD_COLORS.grass} />
+        {/* Dynamic Background */}
+        <rect width={WORLD_WIDTH} height={WORLD_HEIGHT} fill={colors.landscape} />
         
-        {/* Scrolling Dirt Road */}
+        {/* Scrolling Dynamic Road */}
         <rect y={ROAD_TOP} width={WORLD_WIDTH} height={ROAD_BOTTOM - ROAD_TOP} fill="url(#roadPattern)" stroke="black" strokeWidth="4" />
 
         {/* NPCs / Encounter Markers / People / Coins */}

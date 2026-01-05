@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ThemeType } from '../types';
 
 interface TitleScreenProps {
-  onStart: () => void;
+  onStart: (theme: ThemeType) => void;
   onInitAudio: () => void;
   onPlaySound: (type: any) => void;
   musicVolume: number;
@@ -10,11 +11,19 @@ interface TitleScreenProps {
   onSetAmbientVolume: (v: number) => void;
 }
 
+const THEMES: { id: ThemeType; name: string; icon: string; bg: string; road: string; desc: string }[] = [
+  { id: 'desert', name: 'Golden Sands', icon: '🏜️', bg: '#55aa33', road: '#866043', desc: 'The classic wasteland experience.' },
+  { id: 'neon', name: 'Synthwave Night', icon: '🌆', bg: '#0f0f1b', road: '#1a1a2e', desc: 'Retro-future neon highways.' },
+  { id: 'frozen', name: 'Arctic Tundra', icon: '❄️', bg: '#f1f5f9', road: '#a5f3fc', desc: 'Slick roads and biting frost.' },
+  { id: 'toxic', name: 'Toxic Swamp', icon: '☣️', bg: '#1a2e05', road: '#3f6212', desc: 'Radioactive fumes and acid paths.' },
+];
+
 const TitleScreen: React.FC<TitleScreenProps> = ({ 
   onStart, onInitAudio, onPlaySound, 
   musicVolume, ambientVolume, onSetMusicVolume, onSetAmbientVolume
 }) => {
-  const [step, setStep] = useState<'title' | 'story' | 'how-to' | 'settings'>('title');
+  const [step, setStep] = useState<'title' | 'story' | 'theme-selection' | 'how-to' | 'settings'>('title');
+  const [showInfo, setShowInfo] = useState(false);
   const [lineIndex, setLineIndex] = useState(0);
   const intervalRef = useRef<number | null>(null);
 
@@ -60,6 +69,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({
     onPlaySound('select');
   };
 
+  const handleStoryFinished = () => {
+    onPlaySound('confirm');
+    setStep('theme-selection');
+  };
+
   const handleHowTo = () => {
     onInitAudio();
     onPlaySound('select');
@@ -77,9 +91,14 @@ const TitleScreen: React.FC<TitleScreenProps> = ({
     setStep('title');
   };
 
-  const handleFinalStart = () => {
+  const handleFinalStart = (theme: ThemeType) => {
     onPlaySound('confirm');
-    onStart();
+    onStart(theme);
+  };
+
+  const toggleInfo = () => {
+    onPlaySound('select');
+    setShowInfo(!showInfo);
   };
 
   if (step === 'title') {
@@ -92,6 +111,41 @@ const TitleScreen: React.FC<TitleScreenProps> = ({
                 <div className="absolute w-[200%] h-[200%] top-[-50%] left-[-50%] bg-[url('https://www.transparenttextures.com/patterns/dust.png')] opacity-10 animate-[spin_60s_linear_infinite]" />
             </div>
         </div>
+
+        <div className="absolute left-8 top-8 z-50">
+          <button 
+            onClick={toggleInfo}
+            onMouseEnter={() => onPlaySound('select')}
+            className="mc-button w-14 h-14 text-2xl flex items-center justify-center bg-emerald-600 border-black"
+          >
+            ℹ️
+          </button>
+        </div>
+
+        {showInfo && (
+          <div className="absolute inset-0 bg-black/60 z-[110] flex items-center justify-center p-4 backdrop-blur-sm" onClick={toggleInfo}>
+            <div 
+              className="mc-container p-8 text-center border-[6px] border-black space-y-4 max-w-lg bg-[#c6c6c6]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="text-3xl md:text-4xl font-black text-pixel text-stone-900 uppercase">CREDITS</h2>
+              <div className="h-1 bg-black/20 w-full" />
+              <p className="text-xl md:text-2xl font-bold text-stone-800">
+                Made by Team Phoenix <br/>
+                <span className="text-indigo-700">(Vansh Singla, Dev Garg)</span>
+              </p>
+              <p className="text-lg md:text-xl italic font-black text-emerald-700 uppercase tracking-widest text-pixel">
+                Trade. Travel. Encounter.
+              </p>
+              <button 
+                onClick={toggleInfo}
+                className="mc-button bg-stone-700 w-full mt-4 text-xl"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="relative text-center space-y-6 md:space-y-10 animate-in fade-in duration-1000 z-10 w-full max-w-5xl">
           <div className="flex flex-col items-center">
@@ -136,6 +190,42 @@ const TitleScreen: React.FC<TitleScreenProps> = ({
             <span className="absolute top-[80%] left-[15%] text-6xl animate-pulse">💰</span>
             <span className="absolute top-[20%] right-[10%] text-6xl animate-bounce delay-100">⭐</span>
             <span className="absolute top-[70%] right-[20%] text-6xl animate-pulse delay-75">⚔️</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'theme-selection') {
+    return (
+      <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 p-4 backdrop-blur-md">
+        <div className="mc-container max-w-5xl w-full p-0 overflow-hidden shadow-2xl border-[8px] border-black">
+          <div className="bg-emerald-600 p-6 border-b-8 border-black">
+            <h2 className="text-4xl md:text-6xl font-black text-center text-pixel text-white uppercase leading-none">CHOOSE YOUR WORLD</h2>
+            <p className="text-center text-emerald-100 uppercase mt-2 tracking-widest font-bold">Select the environment for your odyssey</p>
+          </div>
+          <div className="bg-[#c6c6c6] p-6 md:p-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {THEMES.map(t => (
+              <button
+                key={t.id}
+                onClick={() => handleFinalStart(t.id)}
+                onMouseEnter={() => onPlaySound('select')}
+                className="flex flex-col border-4 border-black p-4 bg-[#7a7a7a] hover:bg-white hover:scale-105 transition-all group"
+              >
+                <div 
+                  className="w-full h-32 border-4 border-black mb-4 flex flex-col relative overflow-hidden"
+                  style={{ backgroundColor: t.bg }}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center text-5xl group-hover:scale-125 transition-transform duration-500">{t.icon}</div>
+                  <div className="mt-auto h-8 w-full border-t-2 border-black" style={{ backgroundColor: t.road }} />
+                </div>
+                <h3 className="text-xl font-black text-pixel uppercase text-white group-hover:text-black leading-none mb-1">{t.name}</h3>
+                <p className="text-xs font-bold text-white/60 group-hover:text-black/60 leading-tight">{t.desc}</p>
+              </button>
+            ))}
+          </div>
+          <div className="bg-[#3a3a3a] p-4 border-t-8 border-black">
+             <button onClick={() => setStep('title')} className="mc-button w-full text-xl bg-stone-600 border-stone-400 font-black uppercase tracking-widest">BACK</button>
+          </div>
         </div>
       </div>
     );
@@ -292,11 +382,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({
         {lineIndex === storyLines.length - 1 && (
           <div className="pt-8 md:pt-16 flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-1000">
             <button
-              onClick={handleFinalStart}
+              onClick={handleStoryFinished}
               onMouseEnter={() => onPlaySound('select')}
               className="mc-button w-full max-w-sm text-4xl md:text-6xl px-10 md:px-20 py-6 md:py-10 bg-emerald-700 border-emerald-500 hover:bg-emerald-500 shadow-[0_6px_0_#064e3b] md:shadow-[0_10px_0_#064e3b] animate-pulse uppercase font-black"
             >
-              START CARAVAN
+              CONTINUE
             </button>
           </div>
         )}

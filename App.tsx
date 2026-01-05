@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ResourceState, GameStatus, Encounter, Choice, VictoryType, NPC, Passenger, ControlMode, Bullet, VehicleType } from './types';
+import { ResourceState, GameStatus, Encounter, Choice, VictoryType, NPC, Passenger, ControlMode, Bullet, VehicleType, ThemeType } from './types';
 import { INITIAL_RESOURCES, PLAYER_SPEED, SCROLL_SPEED, FOOD_DRAIN_RATE, WORLD_WIDTH, WORLD_HEIGHT, ROAD_TOP, ROAD_BOTTOM, INTERACTION_RANGE } from './constants';
 import { ENCOUNTERS } from './data/gameData';
 import GameCanvas from './components/GameCanvas';
@@ -115,6 +115,7 @@ const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' |
 const App: React.FC = () => {
   const [status, setStatus] = useState<GameStatus>('title');
   const [controlMode, setControlMode] = useState<ControlMode>('caravan');
+  const [theme, setTheme] = useState<ThemeType>('desert');
   const [isPaused, setIsPaused] = useState(false);
   const [victoryType, setVictoryType] = useState<VictoryType | null>(null);
   const [resources, setResources] = useState<ResourceState>(INITIAL_RESOURCES);
@@ -217,9 +218,10 @@ const App: React.FC = () => {
 
   const handleInitAudio = () => { initAudio(); startIntroMusic(); };
 
-  const startGame = () => {
+  const startGame = (chosenTheme: ThemeType) => {
     initAudio(); stopAllAudio(); startAmbient(); startBGM();
     playSound('confirm');
+    setTheme(chosenTheme);
     setResources(INITIAL_RESOURCES);
     setPlayerPos({ x: 200, y: 300 });
     setPersonPos({ x: 200, y: 300 });
@@ -227,6 +229,9 @@ const App: React.FC = () => {
     setNpcs([]); setBullets([]); setScrollOffset(0);
     setFlags(new Set()); setVictoryType(null);
     setIsPaused(false); setStatus('playing'); setNotifications([]);
+    
+    // Welcome message
+    addNotification("Welcome to game, game started");
   };
 
   const addNotification = (message: string) => {
@@ -234,7 +239,7 @@ const App: React.FC = () => {
     setNotifications(prev => [...prev, { id, message }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 8000); // Updated to 8 seconds as requested
+    }, 8000); 
   };
 
   const spawnNPC = useCallback(() => {
@@ -499,14 +504,14 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen bg-[#111] text-stone-100 overflow-hidden select-none">
-      <GameCanvas playerPos={playerPos} personPos={personPos} controlMode={controlMode} npcs={npcs} bullets={bullets} scrollOffset={scrollOffset} status={status} progress={resources.progress} passengers={resources.passengers} vehicle={resources.vehicle} />
+      <GameCanvas playerPos={playerPos} personPos={personPos} controlMode={controlMode} npcs={npcs} bullets={bullets} scrollOffset={scrollOffset} status={status} progress={resources.progress} passengers={resources.passengers} vehicle={resources.vehicle} theme={theme} />
       {status !== 'title' && status !== 'gameover' && status !== 'victory' && (
         <UIOverlay resources={resources} flags={flags} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} onPlaySound={playSound} notifications={notifications} />
       )}
       {status === 'title' && <TitleScreen onStart={startGame} onInitAudio={handleInitAudio} onPlaySound={playSound} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} />}
       {status === 'encounter' && activeEncounter && <ChoiceModal encounter={activeEncounter} onChoice={handleChoice} result={lastChoiceResult} onClose={closeEncounter} flags={flags} reputation={resources.reputation} passengers={resources.passengers} onPlaySound={playSound} />}
       {status === 'vehicle_select' && <VehicleModal currentVehicle={resources.vehicle} onSelect={handleVehicleSelect} onClose={() => setStatus('playing')} onPlaySound={playSound} />}
-      {(status === 'gameover' || status === 'victory') && <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={startGame} onPlaySound={playSound} />}
+      {(status === 'gameover' || status === 'victory') && <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={() => startGame(theme)} onPlaySound={playSound} />}
       {isPaused && (
         <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-md flex items-center justify-center">
           <div className="mc-container p-12 text-center border-[8px] border-black space-y-8">

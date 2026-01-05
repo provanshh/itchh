@@ -7,6 +7,8 @@ export interface Passenger {
 
 export type VehicleType = 'caravan' | 'bike' | 'truck' | 'car' | 'train';
 
+export type ThemeType = 'desert' | 'neon' | 'frozen' | 'toxic';
+
 export interface ResourceState {
   food: number;
   gold: number;
