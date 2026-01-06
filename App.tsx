@@ -8,6 +8,7 @@ import UIOverlay from './components/UIOverlay';
 import EndScreen from './components/EndScreen';
 import TitleScreen from './components/TitleScreen';
 import VehicleModal from './components/VehicleModal';
+import LotteryModal from './components/LotteryModal';
 
 // --- ENHANCED AUDIO ENGINE ---
 let audioCtx: AudioContext | null = null;
@@ -29,7 +30,7 @@ const initAudio = () => {
   return audioCtx;
 };
 
-const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' | 'gameover' | 'victory' | 'hurt' | 'onboard' | 'type' | 'shoot' | 'impact' | 'coin' | 'money') => {
+const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' | 'gameover' | 'victory' | 'hurt' | 'onboard' | 'type' | 'shoot' | 'impact' | 'coin' | 'money' | 'spin' | 'win') => {
   if (!audioCtx) return;
   const now = audioCtx.currentTime;
 
@@ -47,6 +48,12 @@ const playSound = (type: 'select' | 'confirm' | 'trade' | 'collision' | 'move' |
   };
 
   switch(type) {
+    case 'spin':
+      createOsc(220 + Math.random() * 220, 'sawtooth', now, 0.05, 0.05);
+      break;
+    case 'win':
+      [523, 659, 783, 1046].forEach((f, i) => createOsc(f, 'sine', now + i * 0.1, 0.4, 0.1));
+      break;
     case 'coin':
       createOsc(987.77, 'sine', now, 0.1, 0.15); 
       createOsc(1318.51, 'sine', now + 0.05, 0.15, 0.15); 
@@ -250,7 +257,9 @@ const App: React.FC = () => {
     let eId = '';
     let passenger: Passenger | undefined;
     
-    if (rand < 0.25) {
+    if (rand < 0.12) {
+      type = 'mystery_box'; eId = 'mystery';
+    } else if (rand < 0.28) {
       type = 'coin'; eId = Math.random() < 0.1 ? 'big_coin' : 'small_coin'; 
     } else if (rand < 0.55 && resources.progress < 90) {
       type = 'person';
@@ -266,7 +275,7 @@ const App: React.FC = () => {
     const newNpc: NPC = {
       id: Math.random().toString(), x: WORLD_WIDTH + 100,
       y: ROAD_TOP + Math.random() * (ROAD_BOTTOM - ROAD_TOP - 40),
-      type, encounterId: eId, width: type === 'coin' ? 32 : 48, height: type === 'coin' ? 32 : 48,
+      type, encounterId: eId, width: type === 'coin' || type === 'mystery_box' ? 32 : 48, height: type === 'coin' || type === 'mystery_box' ? 32 : 48,
       speedMultiplier: 0.5 + Math.random() * 0.5, passengerData: passenger
     };
     setNpcs(prev => [...prev, newNpc]);
@@ -348,7 +357,7 @@ const App: React.FC = () => {
         let bulletIdToRemove: string | null = null;
 
         for (const bullet of next) {
-          const hit = npcs.find(n => (n.type !== 'coin' && n.type !== 'haven') && 
+          const hit = npcs.find(n => (n.type !== 'coin' && n.type !== 'haven' && n.type !== 'mystery_box') && 
                                       Math.abs(n.x - bullet.x) < 30 && Math.abs(n.y - bullet.y) < 30);
           if (hit) {
             hitNpcId = hit.id;
@@ -397,9 +406,14 @@ const App: React.FC = () => {
       setScrollOffset(prev => (prev + SCROLL_SPEED * vSpeedMult) % 100);
       setNpcs(prev => {
         const updated = prev.map(n => ({ ...n, x: n.x - SCROLL_SPEED * vSpeedMult * n.speedMultiplier })).filter(n => n.x > -150);
+        
         const coinIdx = updated.findIndex(n => n.type === 'coin' && Math.abs(n.x - playerPos.x) < 35 && Math.abs(n.y - playerPos.y) < 35);
         if (coinIdx !== -1) { playSound('coin'); setResources(r => ({ ...r, gold: r.gold + (updated[coinIdx].encounterId === 'big_coin' ? 25 : 5) })); return updated.filter((_, i) => i !== coinIdx); }
-        const hit = updated.find(n => n.type !== 'person' && n.type !== 'coin' && Math.abs(n.x - playerPos.x) < 45 && Math.abs(n.y - playerPos.y) < 45);
+        
+        const mysteryIdx = updated.findIndex(n => n.type === 'mystery_box' && Math.abs(n.x - playerPos.x) < 35 && Math.abs(n.y - playerPos.y) < 35);
+        if (mysteryIdx !== -1) { playSound('confirm'); setStatus('lottery'); return updated.filter((_, i) => i !== mysteryIdx); }
+
+        const hit = updated.find(n => n.type !== 'person' && n.type !== 'coin' && n.type !== 'mystery_box' && Math.abs(n.x - playerPos.x) < 45 && Math.abs(n.y - playerPos.y) < 45);
         if (hit) { playSound('collision'); setActiveEncounter(ENCOUNTERS[hit.encounterId]); setStatus('encounter'); return updated.filter(n => n.id !== hit.id); }
         return updated;
       });
@@ -541,6 +555,36 @@ const App: React.FC = () => {
     setLastChoiceResult(choice.consequenceText);
   };
 
+  const handleLotteryReward = (reward: any) => {
+    playSound('win');
+    if (reward.type === 'shop') {
+      // Special trading encounter
+      setActiveEncounter({
+        id: 'lottery_shop',
+        title: 'MYSTERY BLACK MARKET',
+        description: 'The box explodes into a temporary stall. High-tier goods at low-tier prices!',
+        icon: '🎁',
+        choices: [
+          { id: 'mystery_1', text: 'Forbidden Spice (10G -> 60 Food)', goldCost: 10, foodGain: 60, consequenceText: 'Spicy.', color: 'bg-indigo-600' },
+          { id: 'mystery_2', text: 'Black Market Map (25G -> 40 Renown)', goldCost: 25, reputationGain: 40, consequenceText: 'A path revealed.', color: 'bg-purple-600' },
+          { id: 'mystery_3', text: 'Midas Touch (50G -> 150G)', goldCost: 50, goldGain: 150, consequenceText: 'Pure alchemy.', color: 'bg-yellow-600' },
+        ]
+      });
+      setStatus('encounter');
+      addNotification(`Prize Claimed: ${reward.label}`);
+    } else {
+      setResources(prev => ({
+        ...prev,
+        food: Math.min(100, prev.food + (reward.food || 0)),
+        gold: prev.gold + (reward.gold || 0),
+        reputation: prev.reputation + (reward.rep || 0),
+        lives: Math.min(3, prev.lives + (reward.lives || 0)),
+      }));
+      addNotification(`Prize Claimed: ${reward.label}`);
+      setStatus('playing');
+    }
+  };
+
   const closeEncounter = () => {
     const action = pendingAction; setPendingAction(null); setActiveEncounter(null); setLastChoiceResult(null); setReplacementTarget(null);
     if (action === 'continue_journey') { setResources(prev => ({ ...prev, journeyCount: prev.journeyCount + 1, progress: 0 })); setNpcs([]); setStatus('playing'); }
@@ -575,6 +619,7 @@ const App: React.FC = () => {
       )}
       {status === 'title' && <TitleScreen onStart={startGame} onInitAudio={handleInitAudio} onPlaySound={playSound} musicVolume={musicVolume} ambientVolume={ambientVolume} onSetMusicVolume={setMusicVolume} onSetAmbientVolume={setAmbientVolume} />}
       {status === 'encounter' && activeEncounter && <ChoiceModal encounter={activeEncounter} onChoice={handleChoice} result={lastChoiceResult} onClose={closeEncounter} flags={flags} reputation={resources.reputation} passengers={resources.passengers} onPlaySound={playSound} />}
+      {status === 'lottery' && <LotteryModal onComplete={handleLotteryReward} onPlaySound={playSound} />}
       {status === 'vehicle_select' && <VehicleModal currentVehicle={resources.vehicle} onSelect={handleVehicleSelect} onClose={() => setStatus('playing')} onPlaySound={playSound} />}
       {(status === 'gameover' || status === 'victory') && <EndScreen status={status} victoryType={victoryType} resources={resources} onRestart={() => startGame(theme)} onPlaySound={playSound} />}
       {isPaused && (

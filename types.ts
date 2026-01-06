@@ -50,7 +50,7 @@ export interface NPC {
   id: string;
   x: number;
   y: number;
-  type: 'trader' | 'bandit' | 'traveler' | 'mystic' | 'haven' | 'food_cart' | 'person' | 'coin';
+  type: 'trader' | 'bandit' | 'traveler' | 'mystic' | 'haven' | 'food_cart' | 'person' | 'coin' | 'mystery_box';
   encounterId: string;
   width: number;
   height: number;
@@ -68,6 +68,6 @@ export interface Bullet {
 
 export type VictoryType = 'hero' | 'merchant_prince' | 'iron_monger' | 'survivor';
 
-export type GameStatus = 'title' | 'playing' | 'encounter' | 'gameover' | 'victory' | 'vehicle_select';
+export type GameStatus = 'title' | 'playing' | 'encounter' | 'gameover' | 'victory' | 'vehicle_select' | 'lottery';
 
 export type ControlMode = 'caravan' | 'person';

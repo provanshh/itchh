@@ -97,6 +97,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
             <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.8" />
             <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
           </radialGradient>
+          <radialGradient id="mysteryGlow">
+            <stop offset="0%" stopColor="#d946ef" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#d946ef" stopOpacity="0" />
+          </radialGradient>
           <pattern id="roadPattern" x={-scrollOffset} y="0" width="100" height="100" patternUnits="userSpaceOnUse">
              <rect width="100" height="100" fill={colors.road} />
              <rect x="0" y="45" width="20" height="10" fill={colors.pattern} />
@@ -123,6 +127,19 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ playerPos, personPos, controlMo
                         <circle r={isBig ? 14 : 9} fill={isBig ? "#fbbf24" : "#f59e0b"} stroke="black" strokeWidth="2" />
                         <circle r={isBig ? 10 : 6} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeDasharray="5,2" className="animate-[spin_3s_linear_infinite]" />
                         <text textAnchor="middle" y={isBig ? 6 : 4} className={`fill-yellow-950 font-black ${isBig ? 'text-[14px]' : 'text-[10px]'}`}>$</text>
+                    </g>
+                </g>
+              );
+          }
+
+          if (npc.type === 'mystery_box') {
+              return (
+                <g key={npc.id} transform={`translate(${npc.x}, ${npc.y})`}>
+                    <circle r="40" fill="url(#mysteryGlow)" className="animate-pulse" />
+                    <g className="animate-bounce">
+                        <rect x="-15" y="-15" width="30" height="30" fill="#d946ef" stroke="black" strokeWidth="3" />
+                        <rect x="-11" y="-11" width="22" height="22" fill="#a21caf" stroke="black" strokeWidth="1" />
+                        <text textAnchor="middle" y="10" className="fill-white font-black text-2xl">?</text>
                     </g>
                 </g>
               );
