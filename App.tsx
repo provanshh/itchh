@@ -340,7 +340,7 @@ const App: React.FC = () => {
           const tx = mousePos.current.x;
           const ty = mousePos.current.y;
           nx += (tx - prev.x) * 0.15;
-          ny += (tx - prev.y) * 0.15;
+          ny += (ty - prev.y) * 0.15;
         } else {
           if (keys.current.has('w') || keys.current.has('arrowup')) ny -= PLAYER_SPEED * 1.2;
           if (keys.current.has('s') || keys.current.has('arrowdown')) ny += PLAYER_SPEED * 1.2;
